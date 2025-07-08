@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  gather:
+    runs-on: ubuntu-latest
+    outputs:
+      shas: ${{ steps.get-shas.outputs.shas }}
+    steps:
+      - uses: jsbronder/actions/get-pr-shas@master
+        id: get-shas
+
+
+  test-commits:
+    runs-on: ubuntu-latest
+    needs: gather
+    permissions:
+      statuses: write
+    strategy:
+      fail-fast: false
+      matrix:
+        sha: ${{ fromJson(needs.gather.outputs.shas) }}
+        python_version: ["3.12", "3.13"]
+        command: ["make test", "make lint"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - name: ${{ matrix.python_version }}/${{ matrix.command }}/${{ matrix.sha }}
+        uses: jsbronder/actions/test-commit@master
+        with:
+          sha: ${{ matrix.sha }}
+          context: for-each/py${{ matrix.python_version }}/${{ matrix.command }}
+          command: ${{ matrix.command }}
+
+# vim: sw=2

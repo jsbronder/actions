@@ -1,0 +1,85 @@
+name: Run Test on Commit
+description: |
+  Checks status, runs a test command, and sets commit status on the source repo.
+inputs:
+  sha:
+    description: Commit SHA to test
+    required: true
+  context:
+    description: GitHub status context to use (e.g. for-each/py3.12/unit)
+    required: true
+  command:
+    description: Shell command to run as the test
+    required: true
+  github-token:
+    description: GitHub token with repo:status scope
+    required: false
+    default: ${{ github.token }}
+  repo:
+    description: Full repo name (e.g. user/repo) to post status to
+    required: false
+    default: ${{ github.event.pull_request.head.repo.full_name }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check if already tested
+      id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+
+        status_json=$(gh api "repos/${{ inputs.repo }}/commits/${{ inputs.sha }}/status")
+        state=$(echo "$status_json" | jq -r '.statuses[] | select(.context=="${{ inputs.context }}") | .state' | head -n1)
+
+        if [[ ${state:-} == "success" || ${state:-} == "failure" ]]; then
+          echo "Already tested: $state"
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Set pending status
+      if: steps.check.outputs.skip == 'false'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        gh api --jq . -X POST "repos/${{ inputs.repo }}/statuses/${{ inputs.sha }}" \
+          -f state="pending" \
+          -f context="${{ inputs.context }}" \
+          -f description="Test started"
+
+    - name: Run test command
+      id: test
+      if: steps.check.outputs.skip == 'false'
+      shell: bash
+      run: |
+        echo "Running: ${{ inputs.command }}"
+        set +e
+        eval "${{ inputs.command }}"
+        echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+    - name: Set final status
+      if: steps.check.outputs.skip == 'false'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        exit_code=${{ steps.test.outputs.exit_code }}
+        state="failure"
+        description="Test failed"
+
+        if [[ ${exit_code} -eq 0 ]]; then
+          state="success"
+          description="Test passed"
+        fi
+
+        gh api --jq . -X POST "repos/${{ inputs.repo }}/statuses/${{ inputs.sha }}" \
+          -f state="${state}" \
+          -f context="${{ inputs.context }}" \
+          -f description="${description}"
+
+        exit ${exit_code}

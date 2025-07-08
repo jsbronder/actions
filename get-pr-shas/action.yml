@@ -1,0 +1,32 @@
+name: Get pull request commits
+description: "Outputs a JSON list of commit SHAs in the current PR"
+inputs:
+  github-token:
+    required: false
+    description: GitHub token
+    default: ${{ github.token }}
+  base-sha:
+    required: false
+    description: SHA of the base of the PR
+    default: ${{ github.event.pull_request.base.sha }}
+  commits:
+    required: false
+    description: number of commits in the PR
+    default: ${{ github.even.pull_request.commits }}
+outputs:
+  shas:
+    description: JSON list of commit SHAs
+    value: ${{ steps.get-shas.outputs.shas }}
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: ${{ inputs.commits }}
+    - id: get-shas
+      shell: bash
+      run: |
+        shas=$(git log --reverse --pretty=format:'%h' ${{ inputs.base-sha }}..HEAD | jq -R | jq -cs)
+        echo "shas=${shas}" >> "${GITHUB_OUTPUT}"
+
+
