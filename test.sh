@@ -1,3 +1,3 @@
 #!/bin/bash
-echo test success
-exit 0
+echo test fails
+exit 1
