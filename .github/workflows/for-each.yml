@@ -1,0 +1,134 @@
+name: For Each Commit
+
+on:
+  workflow_call:
+    inputs:
+      test-commands:
+        description: Newline-separated shell commands to run on each commit
+        required: true
+        type: string
+
+jobs:
+  get-commits:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    env:
+      REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get commit SHAs
+        id: set-matrix
+        run: |
+          commits=$(git log --reverse --pretty=format:'%H' origin/${{ github.event.pull_request.base.ref }}..HEAD)
+          matrix_json=$(jq -nc --argjson shas "$(printf '%s\n' ${commits} | jq -R . | jq -s .)" '{commit: $shas}')
+          echo "matrix=${matrix_json}" >> $GITHUB_OUTPUT
+
+      - name: Mark pending commits
+        run: |
+          for commit in $(git log --pretty=format:'%H' origin/${{ github.event.pull_request.base.ref }}..HEAD); do
+            status_json=$(gh api --jq '.statuses[]' repos/${REPO}/commits/${commit}/status)
+            status=$(echo ${status_json} | jq 'select(.context = "for-each/commit") | .state' | head -n 1)
+            if [[ ${status} =~ (success|failure) ]]; then
+              continue
+            fi
+
+            gh api repos/${REPO}/statuses/${commit} \
+              --method POST \
+              --field state="pending" \
+              --field context="for-each/commit" \
+              --field description="Running tests..."
+          done
+
+  test-commits:
+    needs: get-commits
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.get-commits.outputs.matrix)}}
+    env:
+      REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      GH_TOKEN: ${{ github.token }}
+    name: Test commit ${{ matrix.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout specific commit
+        run: git checkout ${{ matrix.commit }}
+
+      - name: Run tests
+        id: tests
+        shell: bash
+        run: |
+          status_json=$(gh api --jq '.statuses[]' repos/${REPO}/commits/${{ matrix.commit }}/status)
+          status=$(echo ${status_json} | jq 'select(.context = "for-each/commit") | .state' | head -n 1)
+          if [[ ${status} = success ]]; then
+            echo "Skipping already tested and succeeding commit"
+            exit 0
+          elif [[ ${status} == failure ]]; then
+            echo "Skipping already tested and failing commit"
+            exit 1
+          fi
+
+          failed=0
+          while IFS= read -r cmd; do
+            echo "+ $cmd"
+            if ! bash -c "$cmd"; then
+              failed=1
+            fi
+          done <<< "${{ inputs.test-commands }}"
+          exit ${failed}
+
+      - name: Set commit status to success
+        if: success()
+        run: |
+          gh api repos/${REPO}/statuses/${{ matrix.commit }} \
+            --method POST \
+            --field state="success" \
+            --field context="for-each/commit" \
+            --field description="All tests passed"
+
+      - name: Set commit status to failure
+        run: |
+          gh api repos/${REPO}/statuses/${{ matrix.commit }} \
+            --method POST \
+            --field state="failure" \
+            --field context="for-each/commit" \
+            --field description="Test failures"
+
+  aggregate-status:
+    needs: test-commits
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      HEAD_COMMIT: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Set overall CI status
+        run: |
+		  state="failure"
+          desc="one or more commits failed"
+          if [[ ${{ needs.test-commits.result }} == success ]]; then
+            state="success"
+            desc="All commits passed"
+          fi
+
+          gh api repos/${REPO}/statuses/${HEAD_COMMIT} \
+            --method POST \
+            --field state="${state}" \
+            --field context="for-each/pull-request" \
+            --field description="${desc}"
