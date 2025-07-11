@@ -1,0 +1,95 @@
+name: Run Test on Commit
+description: |
+  If a commit has not already been tested, run the provided command and set the
+  commit status on the source repository.  Once this has been performed, the
+  commit status will be used as a cache and the test command will not be run
+  again.
+inputs:
+  sha:
+    description: Commit SHA to test
+    required: true
+  context:
+    description: GitHub status context
+    required: true
+  command:
+    description: Shell command to run as the test
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    # TODO:  Once github provides ${{ github.job_id }}, update the TARGET_URL.
+    # https://github.com/orgs/community/discussions/8945
+    - name: Checkout ${{ inputs.sha }}
+      shell: bash
+      run: |
+        echo "Checking out ${{ inputs.sha }} and setting up environment"
+
+        git checkout --force --detach ${{ inputs.sha }}
+        full_sha=$(git rev-parse ${{ inputs.sha }})
+
+        cat <<-EOF >> "${GITHUB_ENV}"
+        GH_TOKEN=${{ github.token }}
+        TARGET_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        STATUSES_URL=repos/${{ github.event.pull_request.head.repo.full_name }}/statuses/${full_sha}
+        STATUS_URL=repos/${{ github.event.pull_request.head.repo.full_name }}/commits/${full_sha}/status
+        EOF
+    - name: Check if already tested
+      id: check
+      shell: bash
+      run: |
+        echo "Checking for cached status of ${{ inputs.context }}"
+        set -euo pipefail
+
+        state=
+        state=$(gh api --jq '.statuses[] | select(.context=="${{ inputs.context }}") | .state' ${STATUS_URL} | head -n1)
+
+        if [[ ${state} =~ (success|failure) ]]; then
+          echo "Already tested: ${state}"
+          echo "skip=true" >> "${GITHUB_OUTPUT}"
+          [[ ${state:-} == "success" ]]
+          exit $?
+        else
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+        fi
+    - name: Set pending status
+      if: steps.check.outputs.skip == 'false'
+      shell: bash
+      run: |
+        echo "Setting ${{ inputs.context }} to pending"
+        gh api --silent -X POST ${STATUSES_URL} \
+          -f state="pending" \
+          -f context="${{ inputs.context }}" \
+          -f description="Test started" \
+          -f target_url="${TARGET_URL}"
+    - name: Run test command
+      id: test
+      if: steps.check.outputs.skip == 'false'
+      shell: bash
+      run: |
+        echo "Running: ${{ inputs.command }}"
+        set +e
+        ${{ inputs.command }}
+        exit_code=$?
+        echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+        exit ${exit_code}
+
+    - name: Set final status
+      if: always() && steps.check.outputs.skip == 'false'
+      shell: bash
+      run: |
+        echo "Setting ${{ inputs.context }} status"
+        exit_code=${{ steps.test.outputs.exit_code }}
+        state="failure"
+        description="Test failed"
+
+        if [[ ${exit_code} -eq 0 ]]; then
+          state="success"
+          description="Test passed"
+        fi
+
+        gh api --silent -X POST ${STATUSES_URL} \
+          -f state="${state}" \
+          -f context="${{ inputs.context }}" \
+          -f description="${description}" \
+          -f target_url="${TARGET_URL}"
