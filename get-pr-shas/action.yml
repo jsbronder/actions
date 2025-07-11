@@ -1,0 +1,39 @@
+name: Get pull request commits
+description: "Outputs a JSON list of abbreviated commit SHAs in the current pull request"
+outputs:
+  shas:
+    description: JSON list of abbreviated commit SHAs in the current pull request
+    value: ${{ steps.get-shas.outputs.shas }}
+  fetch-depth:
+    description: depth required to fetch every commit in the pull request
+    value: ${{ steps.get-shas.outputs.fetch-depth }}
+runs:
+  using: "composite"
+  steps:
+    - id: setup
+      shell: bash
+      run: |
+        echo "Setting up environment"
+        cat <<-EOF >> "${GITHUB_ENV}"
+        BASE_SHA=${{ github.event.pull_request.base.sha }}
+        HEAD_SHA=${{ github.event.pull_request.head.sha }}
+        FETCH_DEPTH=$((${{ github.event.pull_request.commits }} + 1))
+        EOF
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: ${{ env.FETCH_DEPTH }}
+        ref: ${{ env.HEAD_SHA }}
+    - id: get-shas
+      shell: bash
+      run: |
+        echo "Getting list of SHAs in pull request"
+
+        shas=$(git log --reverse --pretty=format:'%h' ${BASE_SHA}..HEAD | jq -R | jq -cs)
+        if [[ -z ${shas} ]]; then
+          echo failed to get shas
+          exit 1
+        fi
+        echo "shas=${shas}" >> "${GITHUB_OUTPUT}"
+        echo "fetch-depth=${FETCH_DEPTH}" >> "${GITHUB_OUTPUT}"
+
+
