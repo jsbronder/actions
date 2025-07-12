@@ -14,6 +14,10 @@ inputs:
   command:
     description: Shell command to run as the test
     required: true
+  token:
+    description: Github token
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: "composite"
@@ -28,11 +32,15 @@ runs:
         git checkout --force --detach ${{ inputs.sha }}
         full_sha=$(git rev-parse ${{ inputs.sha }})
 
+        if [[ -z ${{ inputs.token }} ]]; then
+          echo "Error: no token passed in as input"
+        fi
+
         cat <<-EOF >> "${GITHUB_ENV}"
-        GH_TOKEN=${{ github.token }}
+        GH_TOKEN=${{ inputs.token }}
         TARGET_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        STATUSES_URL=repos/${{ github.event.pull_request.head.repo.full_name }}/statuses/${full_sha}
-        STATUS_URL=repos/${{ github.event.pull_request.head.repo.full_name }}/commits/${full_sha}/status
+        STATUSES_URL=repos/${{ github.repository }}/statuses/${full_sha}
+        STATUS_URL=repos/${{ github.repository }}/commits/${full_sha}/status
         EOF
     - name: Check if already tested
       id: check
