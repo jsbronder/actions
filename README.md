@@ -54,7 +54,7 @@ jobs:
     needs: gather-pr-commits
     permissions:
       contents: read
-      statuses: write
+      statuses: read
     strategy:
       fail-fast: false
       matrix:

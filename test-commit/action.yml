@@ -18,8 +18,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # TODO:  Once github provides ${{ github.job_id }}, update the TARGET_URL.
-    # https://github.com/orgs/community/discussions/8945
     - name: Checkout ${{ inputs.sha }}
       shell: bash
       run: |
@@ -27,12 +25,14 @@ runs:
 
         git checkout --force --detach ${{ inputs.sha }}
         full_sha=$(git rev-parse ${{ inputs.sha }})
+        status_file=test-commit-${{ inputs.sha }}-$(echo ${{ inputs.context }} | tr '[ /]' '-').status
 
         cat <<-EOF >> "${GITHUB_ENV}"
         GH_TOKEN=${{ github.token }}
         TARGET_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        STATUSES_URL=repos/${{ github.event.pull_request.head.repo.full_name }}/statuses/${full_sha}
-        STATUS_URL=repos/${{ github.event.pull_request.head.repo.full_name }}/commits/${full_sha}/status
+        STATUS_URL=repos/${{ github.repository }}/commits/${full_sha}/status
+        STATUS_FILE=${status_file}
+        FULL_SHA=${full_sha}
         EOF
     - name: Check if already tested
       id: check
@@ -52,16 +52,6 @@ runs:
         else
           echo "skip=false" >> "${GITHUB_OUTPUT}"
         fi
-    - name: Set pending status
-      if: steps.check.outputs.skip == 'false'
-      shell: bash
-      run: |
-        echo "Setting ${{ inputs.context }} to pending"
-        gh api --silent -X POST ${STATUSES_URL} \
-          -f state="pending" \
-          -f context="${{ inputs.context }}" \
-          -f description="Test started" \
-          -f target_url="${TARGET_URL}"
     - name: Run test command
       id: test
       if: steps.check.outputs.skip == 'false'
@@ -71,25 +61,28 @@ runs:
         set +e
         ${{ inputs.command }}
         exit_code=$?
-        echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
-        exit ${exit_code}
 
-    - name: Set final status
-      if: always() && steps.check.outputs.skip == 'false'
-      shell: bash
-      run: |
-        echo "Setting ${{ inputs.context }} status"
-        exit_code=${{ steps.test.outputs.exit_code }}
-        state="failure"
-        description="Test failed"
-
+        state=failure
         if [[ ${exit_code} -eq 0 ]]; then
-          state="success"
-          description="Test passed"
+          state=success
         fi
 
-        gh api --silent -X POST ${STATUSES_URL} \
-          -f state="${state}" \
-          -f context="${{ inputs.context }}" \
-          -f description="${description}" \
-          -f target_url="${TARGET_URL}"
+        cat <<-EOF > "${STATUS_FILE}"
+        {
+          "state": "${state}",
+          "sha": "${FULL_SHA}",
+          "context": "${{ inputs.context }}",
+          "target_url": "${TARGET_URL}"
+        }
+        EOF
+        exit ${exit_code}
+
+    - name: Archive test status
+      if: always() && steps.check.outputs.skip == 'false'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.STATUS_FILE }}
+        path: ${{ env.STATUS_FILE }}
+        if-no-files-found: error
+        retention-days: 1
+        overwrite: true
