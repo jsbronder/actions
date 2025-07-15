@@ -38,6 +38,7 @@ that tests are not run again on successive jobs.  This composite action needs
 commit in a pull request.
 
 ```yaml
+name: Test Every Commit
 on: pull_request
 jobs:
   gather-pr-commits:
@@ -72,3 +73,30 @@ jobs:
           command: ${{ matrix.command }}
 ```
 
+`set-commit-statuses` can then be used to set the commit status for each commit
+tested by `test-commit` by adding it as a workflow that is run after the *Test
+Every Commit* workflow:  Note that the pairing of `on: pull_request` and `on:
+workflow_run`, while cumbersome, is intentional in order to prevent leaking
+write permissions to forked repositories.  You can read more on the GitHub Blog
+about ["pwn
+requests"](https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/)
+
+```
+name: Set Commit Statuses
+
+on:
+  workflow_run:
+    workflows: ["Test Every Commit"]
+    types:
+      - completed
+
+jobs:
+  set-commit-statuses:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+    steps:
+      - uses: jsbronder/actions/set-commit-statuses@v1
+```

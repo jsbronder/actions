@@ -27,9 +27,14 @@ runs:
         full_sha=$(git rev-parse ${{ inputs.sha }})
         status_file=test-commit-${{ inputs.sha }}-$(echo ${{ inputs.context }} | tr '[ /]' '-').status
 
+        target_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        if [[ -n "${{ github.job_id }}" ]]; then
+          target_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs/${{ github.job_id }}
+        fi
+
         cat <<-EOF >> "${GITHUB_ENV}"
         GH_TOKEN=${{ github.token }}
-        TARGET_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        TARGET_URL=${target_url}
         STATUS_URL=repos/${{ github.repository }}/commits/${full_sha}/status
         STATUS_FILE=${status_file}
         FULL_SHA=${full_sha}
