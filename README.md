@@ -100,3 +100,35 @@ jobs:
     steps:
       - uses: jsbronder/actions/set-commit-statuses@v1
 ```
+
+### Paper Cuts
+GitHub actions, like a lot of CI systems, wasn't built to treat commits as
+individual entities.  As you can see above, it's not exactly straight-forward
+to get every commit in a series tested.  However, some shops do place a premium
+on having a clear history that developers can read through, both while
+reviewing the proposed changes and later when on an archaeological mission.
+Furthermore, ensuring the code builds and tests pass drastically reduces the
+friction to running git-bisect.  A bunch of "all: fix lints" commits don't help
+anyone.
+
+That said, this solution isn't perfect and there poor UI/UX situations that
+should be noted.
+
+- Commit Statuses cannot be removed or updated.  So if a PR is run against a
+  mainline that later changes how the `context` is constructed or removes a
+  test `command`, then the tested commits will never get a chance to recover
+  from failed.  The easiest thing to do in this case is rebase the PR so each
+  SHA in the series changes.
+- We cannot link directly to the job that failed in a matrix.  Hopefully this
+  will be resolved, https://github.com/orgs/community/discussions/8945
+- GitHub actions create their own statuses on the `HEAD` commit of every PR.
+  When using a job matrix, this means the `HEAD` commit is going to get linked
+  to the jobs that ran for every commit in the series.  There is no apparent
+  way to remove these.
+  Likely, one would not want to remove them anyways, as the statuses for each
+  commit in the series otherwise not accessible in the dropdown for checks
+  run on the pull request.
+- A pull request will run the set of tests listed for `test-commits` found in
+  the `HEAD` of the pull request.  So care should be taken to review any
+  changes to the workflow.
+
