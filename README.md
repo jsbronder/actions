@@ -119,6 +119,10 @@ should be noted.
   test `command`, then the tested commits will never get a chance to recover
   from failed.  The easiest thing to do in this case is rebase the PR so each
   SHA in the series changes.
+  Similarly if commits are added to a failing PR, the previous HEAD of that PR
+  will be stuck with all of the old failing checks.  In this case, rebase and
+  reword the first commit.  This will change the SHA of the first commit, and
+  hence, every commit that follows it, granting them a clean status.
 - We cannot link directly to the job that failed in a matrix.  Hopefully this
   will be resolved, https://github.com/orgs/community/discussions/8945
 - GitHub actions create their own statuses on the `HEAD` commit of every PR.
