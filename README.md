@@ -2,25 +2,17 @@
 This repository provides composable building blocks for wrangling GitHub Actions to
 test every commit in a pull request and provide a reasonable UI representing the results.
 
-### `get-pr-shas`
-Given a pull request event, get a list of every commit in the pull request and
-the fetch-depth required to get a clone that contains every commit.
+### `expand-matrix`
+Given a pull request event and a test matrix, expand the matrix by adding the
+short and full SHA of every commit in the pull request to each item in the
+matrix.
+
+#### Inputs
+- *matrix*: JSON test matrix to be expanded.
 
 #### Outputs
-- *fetch-depth*: depth required to fetch every commit in the pull request.
-  This can be passed to actions/checkout.
-- *shas*: JSON array of the abbreviated SHA of every commit in the pull
-  request.  This can be used to build a test matrix.  For instance:
-
-  ```yaml
-  test-commits:
-    needs: get-pr-shas
-    strategy:
-      fail-fast: false
-      matrix:
-        sha: ${{ fromJson(needs.gather-pr-shas.outputs.shas) }}
-      ...
-  ```
+- *matrix*: Original JSON matrix expanded with the `sha` and `short_sha` of
+  every commit in series added to each object in the array.
 
 ### `test-commit`
 Runs a test on a given commit and uses GitHub's commit statuses as a cache so
@@ -34,42 +26,45 @@ that tests are not run again on successive jobs.  This composite action needs
 - *command*: Shell command to run as the test.
 
 ## Testing Every Commit in a Pull Request
-`get-pr-shas` and `test-commit` can be combined to run multiple tests on every
+`expand-matrix` and `test-commit` can be combined to run multiple tests on every
 commit in a pull request.
 
 ```yaml
 name: Test Every Commit
 on: pull_request
 jobs:
-  gather-pr-commits:
+  expand-matrix:
     runs-on: ubuntu-latest
     outputs:
-      shas: ${{ steps.get-shas.outputs.shas }}
-      fetch-depth: ${{ steps.get-shas.outputs.fetch-depth }}
+      matrix: ${{ steps.expand-matrix.outputs.shas }}
     steps:
-      - uses: jsbronder/actions/get-pr-shas@v1
-        id: get-shas
+      - uses: jsbronder/actions/expand-matrix@v2
+        id: expand-matrix
+        with: |
+            [
+                {"name": "test-1", "command": "make test-1"},
+                {"name": "test-2", "command": "./run-test-2"}
+            ]
 
   test-commits:
     runs-on: ubuntu-latest
-    needs: gather-pr-commits
+    needs: expand-matrix
     permissions:
       contents: read
       statuses: read
     strategy:
       fail-fast: false
       matrix:
-        sha: ${{ fromJson(needs.gather-pr-commits.outputs.shas) }}
-        command: ["make test", "make lint"]
+        sha: ${{ fromJson(needs.expand-matrix.outputs.matrix) }}
+    name: ${{ matrix.name }}/${{ matrix.short_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: ${{ needs.gather-pr-commits.outputs.fetch-depth }}
-      - name: ${{ matrix.command }}/${{ matrix.sha }}
-        uses: jsbronder/actions/test-commit@v1
+          ref: ${{ matrix.sha }}
+      - uses: jsbronder/actions/test-commit@v2
         with:
-          sha: ${{ matrix.sha }}
-          context: test/${{ matrix.command }}
+          sha: ${{ matrix.short_sha }}
+          context: test/${{ matrix.name }}/${{ matrix.short_sha }}
           command: ${{ matrix.command }}
 ```
 

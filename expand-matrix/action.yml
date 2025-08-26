@@ -1,0 +1,53 @@
+name: Expand Matrix
+description: "Expands a test matrix with the full and short SHA of every commit in the current pull request"
+inputs:
+  matrix:
+    description: JSON Matrix to expand with the sha/short_sha of every commit in series.
+    required: true
+outputs:
+  matrix:
+    description: Expanded JSON Job Matrix
+    value: ${{ steps.expand-matrix.outputs.matrix }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: setup
+      shell: bash
+      run: |
+        echo "Setting up environment"
+        cat <<-EOF >> "${GITHUB_ENV}"
+        BASE_SHA=${{ github.event.pull_request.base.sha }}
+        HEAD_SHA=${{ github.event.pull_request.head.sha }}
+        EOF
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: ${{ github.event.pull_request.commits }}
+        ref: ${{ env.HEAD_SHA }}
+    - id: get-shas
+      shell: bash
+      run: |
+        echo "Getting list of SHAs in pull request"
+
+        shas=$(git log --reverse --pretty=format:'%h:%H')
+        if [[ -z ${shas} ]]; then
+          echo failed to get shas
+          exit 1
+        fi
+
+        echo PR_SHAS=${shas} >> "${GITHUB_ENV}"
+    - id: expand-matrix
+      shell: python
+      run: |
+        import json
+        import os
+
+        tests = json.loads('''${{ inputs.matrix }}''')
+        matrix = []
+        for test in tests:
+          for sha in os.environ["PR_SHAS"].split():
+            short, full = sha.split(':')
+            matrix.append({**test, 'short_sha': short, 'sha': full})
+
+        with open(os.environ["GITHUB_OUTPUT"], "a") as fp:
+          fp.write(f"matrix={json.dumps(matrix)}\n")
