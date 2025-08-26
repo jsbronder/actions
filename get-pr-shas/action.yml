@@ -1,12 +1,14 @@
 name: Get pull request commits
 description: "Outputs a JSON list of abbreviated commit SHAs in the current pull request"
+inputs:
+  tests:
+    description: JSON Matrix to expand with the sha/short_sha of every commit in series.
+    required: true
 outputs:
-  shas:
-    description: JSON list of abbreviated commit SHAs in the current pull request
-    value: ${{ steps.get-shas.outputs.shas }}
-  fetch-depth:
-    description: depth required to fetch every commit in the pull request
-    value: ${{ steps.get-shas.outputs.fetch-depth }}
+  matrix:
+    description: Expanded  JSON Job Matrix
+    value: ${{ steps.build-matrix.outputs.matrix }}
+
 runs:
   using: "composite"
   steps:
@@ -17,23 +19,35 @@ runs:
         cat <<-EOF >> "${GITHUB_ENV}"
         BASE_SHA=${{ github.event.pull_request.base.sha }}
         HEAD_SHA=${{ github.event.pull_request.head.sha }}
-        FETCH_DEPTH=$((${{ github.event.pull_request.commits }} + 1))
         EOF
     - uses: actions/checkout@v4
       with:
-        fetch-depth: ${{ env.FETCH_DEPTH }}
+        fetch-depth: ${{ github.event.pull_request.commits }}
         ref: ${{ env.HEAD_SHA }}
     - id: get-shas
       shell: bash
       run: |
         echo "Getting list of SHAs in pull request"
 
-        shas=$(git log --reverse --pretty=format:'%h' ${BASE_SHA}..HEAD | jq -R | jq -cs)
+        shas=$(git log --reverse --pretty=format:'%h:%H')
         if [[ -z ${shas} ]]; then
           echo failed to get shas
           exit 1
         fi
-        echo "shas=${shas}" >> "${GITHUB_OUTPUT}"
-        echo "fetch-depth=${FETCH_DEPTH}" >> "${GITHUB_OUTPUT}"
 
+        echo PR_SHAS=${shas} >> "${GITHUB_ENV}"
+    - id: build-matrix
+      shell: python
+      run: |
+        import json
+        import os
 
+        tests = json.loads('''${{ inputs.tests }}''')
+        matrix = []
+        for test in tests:
+          for sha in os.environ["PR_SHAS"].split():
+            short, full = sha.split(':')
+            matrix.append({**test, 'short_sha': short, 'sha': full})
+
+        with open(os.environ["GITHUB_OUTPUT"], "a") as fp:
+          fp.write(f"matrix={json.dumps(matrix)}\n")
