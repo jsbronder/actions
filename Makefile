@@ -20,3 +20,8 @@ tag:
 	@git -c core.commentchar=: tag -a -m v$(TAG_VERSION) \
 		-m "$$(parse-changelog --prefix-format v CHANGELOG.md $(TAG_VERSION))" \
 		v$(TAG_VERSION)
+
+push-release:
+	@if [[ -z "$(TAG_VERSION)" ]]; then echo "No TAG_VERSION set"; false; fi
+	@which gh >/dev/null
+	@gh release create v$(TAG_VERSION) --notes-from-tag --verify-tag
