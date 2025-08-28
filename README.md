@@ -93,7 +93,7 @@ jobs:
       actions: read
       statuses: write
     steps:
-      - uses: jsbronder/actions/set-commit-statuses@v1
+      - uses: jsbronder/actions/set-commit-statuses@v2
 ```
 
 ### Paper Cuts
