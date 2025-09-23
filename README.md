@@ -17,7 +17,7 @@ matrix.
 ### `test-commit`
 Runs a test on a given commit and uses GitHub's commit statuses as a cache so
 that tests are not run again on successive jobs.  This composite action needs
-`contents: read` and `statuses: write` permission.
+`actions: read`, `contents: read` and `statuses: read` permission.
 
 #### Inputs
 - *sha*: commit SHA to test.
@@ -50,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: expand-matrix
     permissions:
+      actions: read
       contents: read
       statuses: read
     strategy:
@@ -118,8 +119,10 @@ should be noted.
   will be stuck with all of the old failing checks.  In this case, rebase and
   reword the first commit.  This will change the SHA of the first commit, and
   hence, every commit that follows it, granting them a clean status.
-- We cannot link directly to the job that failed in a matrix.  Hopefully this
-  will be resolved, https://github.com/orgs/community/discussions/8945
+- ~We cannot link directly to the job that failed in a matrix.  Hopefully this
+  will be resolved, https://github.com/orgs/community/discussions/8945~ Linking
+  directly to the job that failed in a matrix is now supported, so long as
+  the job has `actions: read` permission.
 - GitHub actions create their own statuses on the `HEAD` commit of every PR.
   When using a job matrix, this means the `HEAD` commit is going to get linked
   to the jobs that ran for every commit in the series.  There is no apparent

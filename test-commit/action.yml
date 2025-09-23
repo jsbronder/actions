@@ -20,6 +20,8 @@ runs:
   steps:
     - name: Checkout ${{ inputs.sha }}
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         echo "Checking out ${{ inputs.sha }} and setting up environment"
 
@@ -28,8 +30,8 @@ runs:
         status_file=test-commit-${{ inputs.sha }}-$(echo ${{ inputs.context }} | tr '[ /]' '-').status
 
         target_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        if [[ -n "${{ github.job_id }}" ]]; then
-          target_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs/${{ github.job_id }}
+        if gh api --jq .html_url /repos/${{ github.repository }}/actions/jobs/${{ job.check_run_id }} > t.url 2>/dev/null; then
+          target_url=$(<t.url)
         fi
 
         cat <<-EOF >> "${GITHUB_ENV}"
