@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and parsed by [parse-changelog](https://crates.io/crates/parse-changelog).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.0.0]
+- Update actions/checkout from v4 to v6
+
 ## [v2.0.0]
 ### Added
 - *expand-matrix* Improved action for building a test matrix containing every
