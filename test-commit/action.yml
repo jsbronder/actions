@@ -86,7 +86,7 @@ runs:
 
     - name: Archive test status
       if: always() && steps.check.outputs.skip == 'false'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ env.STATUS_FILE }}
         path: ${{ env.STATUS_FILE }}
