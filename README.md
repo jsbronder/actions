@@ -38,7 +38,7 @@ jobs:
     outputs:
       matrix: ${{ steps.expand-matrix.outputs.shas }}
     steps:
-      - uses: jsbronder/actions/expand-matrix@v2
+      - uses: jsbronder/actions/expand-matrix@v3
         id: expand-matrix
         with: |
             [
@@ -62,7 +62,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ matrix.sha }}
-      - uses: jsbronder/actions/test-commit@v2
+      - uses: jsbronder/actions/test-commit@v3
         with:
           sha: ${{ matrix.short_sha }}
           context: test/${{ matrix.name }}/${{ matrix.short_sha }}
@@ -94,7 +94,7 @@ jobs:
       actions: read
       statuses: write
     steps:
-      - uses: jsbronder/actions/set-commit-statuses@v2
+      - uses: jsbronder/actions/set-commit-statuses@v3
 ```
 
 ### Paper Cuts
