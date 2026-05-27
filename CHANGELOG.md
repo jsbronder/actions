@@ -7,6 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [v3.0.0]
 - Update actions/checkout from v4 to v6
+- Update actions/upload-artifact from v4 to v7
 
 ## [v2.0.0]
 ### Added
